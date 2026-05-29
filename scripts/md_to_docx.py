@@ -1,6 +1,40 @@
 import re
 import os
+import base64
 import subprocess
+
+def get_image_base64_uri(img_path):
+    # Strip file:// prefix if present
+    if img_path.startswith("file://"):
+        img_path = img_path[7:]
+        
+    doc_dir = '/home/jchrisso/Documentos/Examen_GitHub_Actions/docs'
+    workspace_dir = '/home/jchrisso/Documentos/Examen_GitHub_Actions'
+    
+    # Resolve relative paths
+    resolved_path = img_path
+    if not os.path.isabs(img_path):
+        for base in [doc_dir, workspace_dir]:
+            p = os.path.abspath(os.path.join(base, img_path))
+            if os.path.exists(p):
+                resolved_path = p
+                break
+                
+    if os.path.exists(resolved_path):
+        print(f"Embedding image: {resolved_path}")
+        with open(resolved_path, 'rb') as f:
+            data = f.read()
+        encoded = base64.b64encode(data).decode('utf-8')
+        # Determine mime type
+        mime = "image/png"
+        if resolved_path.lower().endswith((".jpg", ".jpeg")):
+            mime = "image/jpeg"
+        elif resolved_path.lower().endswith(".gif"):
+            mime = "image/gif"
+        return f"data:{mime};base64,{encoded}"
+    else:
+        print(f"Warning: Image not found at {img_path} (Resolved to: {resolved_path})")
+        return img_path
 
 def md_to_html(md_content):
     html_lines = []
@@ -136,13 +170,17 @@ def md_to_html(md_content):
     html_text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', html_text)
     # 2. Inline code: `code` -> <code>code</code>
     html_text = re.sub(r'`(.*?)`', r'<code>\1</code>', html_text)
-    # 3. Images: ![caption](path) -> img with caption
-    html_text = re.sub(
-        r'!\[(.*?)\]\((.*?)\)', 
-        r'<img src="\2" alt="\1" /><div class="caption">\1</div>', 
-        html_text
-    )
-    # 4. Links: [text](url) -> standard HTML links (without file:/// prefix in text representation for elegance)
+    
+    # 3. Images with Base64 embedding: ![caption](path) -> img with base64 src
+    def repl_img(match):
+        caption = match.group(1)
+        path = match.group(2)
+        base64_uri = get_image_base64_uri(path)
+        return f'<img src="{base64_uri}" alt="{caption}" /><div class="caption">{caption}</div>'
+    
+    html_text = re.sub(r'!\[(.*?)\]\((.*?)\)', repl_img, html_text)
+    
+    # 4. Links: [text](url) -> standard HTML links
     html_text = re.sub(r'\[(.*?)\]\((.*?)\)', r'<a href="\2">\1</a>', html_text)
     
     return html_text
@@ -154,7 +192,6 @@ def run():
     md_path = os.path.join(doc_dir, 'Examen_GitHub_Actions_Enterprise.md')
     html_path = os.path.join(doc_dir, 'Examen_GitHub_Actions_Enterprise.html')
     odt_path = os.path.join(doc_dir, 'Examen_GitHub_Actions_Enterprise.odt')
-    docx_path = os.path.join(evidencias_dir, 'Examen_GitHub_Actions_Enterprise.docx')
     
     print(f"Reading {md_path}...")
     with open(md_path, 'r', encoding='utf-8') as f:
@@ -215,11 +252,15 @@ def run():
         '--outdir', evidencias_dir
     ], check=True)
     
-    # Rename output docx to match target path exactly
+    # We will also create a copy of the generated docx file under target names to satisfy all potential requests
     generated_docx = os.path.join(evidencias_dir, 'Examen_GitHub_Actions_Enterprise.docx')
-    print(f"Checking generated file: {generated_docx}")
+    lab7_docx = os.path.join(evidencias_dir, 'lab7.docx')
+    
     if os.path.exists(generated_docx):
         print(f"Success! Generated: {generated_docx} ({os.path.getsize(generated_docx)} bytes)")
+        # Copy to lab7.docx in case the user prefers that name
+        subprocess.run(['cp', generated_docx, lab7_docx], check=True)
+        print(f"Copied to: {lab7_docx}")
     else:
         print("Failed to generate DOCX file.")
 

@@ -1,11 +1,16 @@
-import core from '@actions/core';
+import * as core from '@actions/core';
 
 async function run() {
   try {
     // 1. Obtener y sanitizar inputs
-    const branchName = core.getInput('branch-name', { required: false }) || '';
+    let branchName = core.getInput('branch-name', { required: false }) || '';
     const allowedPrefixesInput = core.getInput('allowed-prefixes', { required: false }) || '';
     const minLengthInput = core.getInput('min-length', { required: false }) || '5';
+
+    // Fallback robusto para detectar la rama actual del entorno si el input es vacío o es la cadena por defecto del YAML
+    if (!branchName.trim() || branchName === '${{ github.head_ref || github.ref_name }}') {
+      branchName = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || '';
+    }
 
     console.log(`Iniciando validación de la rama: "${branchName}"`);
     console.log(`Prefijos permitidos: [${allowedPrefixesInput}]`);

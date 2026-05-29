@@ -1,0 +1,118 @@
+name: Secure Deployment Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Parte 2 — Permissions (Restricción global del token de GITHUB_TOKEN a nivel de workflow)
+permissions:
+  contents: read # Solo lectura de código, sin permisos de escritura ni administración
+
+jobs:
+  build-and-test:
+    name: Build & Validate Tests
+    runs-on: ubuntu-latest
+    
+    # Restricción estricta a nivel de job (Principio de privilegios mínimos)
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b80ff79f17a40bab996e6812ff58acee6b7583e5 # v4.0.0 (pinning de versión usando hash para evitar supply chain vulnerabilities)
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6012912aaf22240061e886d50314a9ec6832c320 # v4.0.0 (pinning)
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Build
+        run: npm run build
+
+      - name: Run Tests
+        run: npm run test:ci
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    
+    # Restricción a nivel de job
+    permissions:
+      contents: read
+      
+    # Parte 3 — Environments (Uso del entorno Staging)
+    environment: staging
+    
+    # Parte 4 — Conditions (Solo permitir despliegue desde rama main)
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b80ff79f17a40bab996e6812ff58acee6b7583e5 # v4.0.0
+
+      - name: Deploy to Staging Server
+        # Parte 1 — Secrets (Mecanismo seguro para pasar secretos e inyectar variables sin imprimirlos)
+        env:
+          GLOBAL_DEPLOY_KEY: ${{ secrets.GLOBAL_DEPLOY_KEY }}
+          DEPLOY_API_TOKEN: ${{ secrets.DEPLOY_API_TOKEN }} # Secreto de entorno específico
+          GLOBAL_API_URL: ${{ vars.GLOBAL_API_URL }}
+        run: |
+          echo "Iniciando despliegue seguro en Staging..."
+          echo "URL de API no sensible: $GLOBAL_API_URL"
+          
+          # Verificación segura sin imprimir los secretos reales en consola
+          if [ -n "$GLOBAL_DEPLOY_KEY" ] && [ -n "$DEPLOY_API_TOKEN" ]; then
+            echo "✅ Se han cargado las llaves y tokens de despliegue de forma segura (Scope: Staging)."
+          else
+            echo "⚠️ Faltan credenciales de despliegue. Por favor verifica la configuración."
+          fi
+          echo "Despliegue completado con éxito en Staging."
+
+  deploy-production:
+    name: Deploy to Production
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    
+    # Restricción a nivel de job
+    permissions:
+      contents: read
+      
+    # Parte 3 — Environments (Uso del entorno Production con protección de aprobación manual)
+    environment: production
+    
+    # Parte 4 — Conditions (Solo permitir despliegue desde rama main y éxito en staging)
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b80ff79f17a40bab996e6812ff58acee6b7583e5 # v4.0.0
+
+      - name: Deploy to Production Server
+        # Parte 1 — Secrets (Pasando variables y secretos correspondientes al entorno de producción)
+        env:
+          GLOBAL_DEPLOY_KEY: ${{ secrets.GLOBAL_DEPLOY_KEY }}
+          DEPLOY_API_TOKEN: ${{ secrets.DEPLOY_API_TOKEN }} # Secreto de entorno específico
+          GLOBAL_API_URL: ${{ vars.GLOBAL_API_URL }}
+        run: |
+          echo "Iniciando despliegue seguro en Producción..."
+          echo "URL de API no sensible: $GLOBAL_API_URL"
+          
+          # Verificación segura sin imprimir los secretos reales en consola
+          if [ -n "$GLOBAL_DEPLOY_KEY" ] && [ -n "$DEPLOY_API_TOKEN" ]; then
+            echo "✅ Se han cargado las llaves y tokens de despliegue de forma segura (Scope: Production)."
+          else
+            echo "⚠️ Faltan credenciales de despliegue. Por favor verifica la configuración."
+          fi
+          echo "Despliegue completado con éxito en Producción."

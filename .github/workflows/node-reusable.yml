@@ -1,0 +1,115 @@
+name: Reusable Node Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Version de Node.js a utilizar.
+        required: true
+        type: string
+      install-command:
+        description: Comando para instalar dependencias.
+        required: false
+        default: npm ci
+        type: string
+      test-command:
+        description: Comando para ejecutar tests.
+        required: false
+        default: npm run test:ci
+        type: string
+      build-command:
+        description: Comando para compilar el proyecto.
+        required: false
+        default: npm run build
+        type: string
+      artifact-prefix:
+        description: Prefijo usado para nombrar artifacts.
+        required: false
+        default: node-build
+        type: string
+      artifact-retention-days:
+        description: Dias de retencion para los artifacts.
+        required: false
+        default: 7
+        type: number
+    outputs:
+      artifact-name:
+        description: Nombre del artifact publicado.
+        value: ${{ jobs.node_pipeline.outputs.artifact-name }}
+      cache-hit:
+        description: Indica si el cache de dependencias fue reutilizado.
+        value: ${{ jobs.node_pipeline.outputs.cache-hit }}
+      resolved-node-version:
+        description: Version exacta de Node resuelta por el runner.
+        value: ${{ jobs.node_pipeline.outputs.resolved-node-version }}
+
+permissions:
+  contents: read
+
+jobs:
+  node_pipeline:
+    name: Node ${{ inputs.node-version }} reusable pipeline
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.artifact_meta.outputs.name }}
+      cache-hit: ${{ steps.dependency_cache.outputs.cache-hit }}
+      resolved-node-version: ${{ steps.resolve_node.outputs.value }}
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ inputs.node-version }}
+          package-manager-cache: false
+
+      - name: Resolver version exacta de Node.js
+        id: resolve_node
+        run: echo "value=$(node --version)" >> "$GITHUB_OUTPUT"
+
+      - name: Restaurar cache de npm
+        id: dependency_cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ github.repository_id }}-node-${{ inputs.node-version }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-${{ github.repository_id }}-node-${{ inputs.node-version }}-
+            ${{ runner.os }}-npm-${{ github.repository_id }}-
+
+      - name: Instalar dependencias
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          ${{ inputs.install-command }} 2>&1 | tee ci-logs/install.log
+
+      - name: Ejecutar tests
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          ${{ inputs.test-command }} 2>&1 | tee ci-logs/test.log
+
+      - name: Compilar proyecto
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          ${{ inputs.build-command }} 2>&1 | tee ci-logs/build.log
+
+      - name: Definir metadatos del artifact
+        id: artifact_meta
+        run: echo "name=${{ inputs.artifact-prefix }}-node${{ inputs.node-version }}" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.artifact_meta.outputs.name }}
+          path: |
+            dist
+            reports
+            ci-logs
+          if-no-files-found: error
+          retention-days: ${{ inputs.artifact-retention-days }}

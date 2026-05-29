@@ -1,0 +1,99 @@
+name: Reusable Monorepo Node Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Directorio de trabajo del componente (ej. frontend o backend)"
+        required: true
+        type: string
+      node-version:
+        description: "Versión de Node.js a utilizar"
+        required: false
+        default: "20"
+        type: string
+      install-command:
+        description: "Comando para instalar dependencias"
+        required: false
+        default: "npm ci"
+        type: string
+      test-command:
+        description: "Comando para ejecutar tests"
+        required: false
+        default: "npm test"
+        type: string
+      build-command:
+        description: "Comando para compilar el proyecto"
+        required: false
+        default: "npm run build"
+        type: string
+      artifact-prefix:
+        description: "Prefijo para los artefactos generados"
+        required: false
+        default: "node-app"
+        type: string
+      artifact-retention-days:
+        description: "Días de retención para los artefactos"
+        required: false
+        default: 1
+        type: number
+    outputs:
+      artifact-name:
+        description: "Nombre del artefacto subido"
+        value: ${{ jobs.node_pipeline.outputs.artifact-name }}
+
+permissions:
+  contents: read
+
+# YAML Anchors para compartir configuraciones comunes de pasos
+x-step-config: &step-config
+  shell: bash
+
+jobs:
+  node_pipeline:
+    name: Build & Test [Node ${{ inputs.node-version }} - ${{ inputs.working-directory }}]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    outputs:
+      artifact-name: ${{ steps.meta.outputs.name }}
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@b80ff79f17a40bab996e6812ff58acee6b7583e5 # v4.0.0
+
+      - name: Configurar Node.js con Caché
+        uses: actions/setup-node@6012912aaf22240061e886d50314a9ec6832c320 # v4.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+          cache-dependency-path: "${{ inputs.working-directory }}/package-lock.json"
+
+      - name: Instalar dependencias
+        run: ${{ inputs.install-command }}
+        <<: *step-config
+
+      - name: Ejecutar Lint
+        run: npm run lint --if-present
+        <<: *step-config
+
+      - name: Ejecutar Tests
+        run: ${{ inputs.test-command }}
+        <<: *step-config
+
+      - name: Compilar Proyecto
+        run: ${{ inputs.build-command }}
+        <<: *step-config
+
+      - name: Definir metadatos de artifact
+        id: meta
+        run: echo "name=${{ inputs.artifact-prefix }}-build" >> "$GITHUB_OUTPUT"
+        <<: *step-config
+
+      - name: Publicar artefacto
+        uses: actions/upload-artifact@a8a3f3ad30e3422c9c7b888a15615d19a852ae32 # v4.0.0
+        with:
+          name: ${{ inputs.artifact-prefix }}-build
+          path: ${{ inputs.working-directory }}/dist
+          retention-days: ${{ inputs.artifact-retention-days }}
+          if-no-files-found: ignore

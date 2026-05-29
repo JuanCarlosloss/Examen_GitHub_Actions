@@ -1,0 +1,52 @@
+name: Node Consumer Pipeline
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  node_18:
+    name: Reusable workflow con Node 18
+    uses: ./.github/workflows/node-reusable.yml
+    with:
+      node-version: '18'
+      install-command: npm ci
+      test-command: npm run test:ci
+      build-command: npm run build
+      artifact-prefix: demo-node
+      artifact-retention-days: 5
+
+  node_20:
+    name: Reusable workflow con Node 20
+    uses: ./.github/workflows/node-reusable.yml
+    with:
+      node-version: '20'
+      install-command: npm ci
+      test-command: npm run test:ci
+      build-command: npm run build
+      artifact-prefix: demo-node
+      artifact-retention-days: 5
+
+  resumen:
+    name: Consumir outputs del reusable workflow
+    runs-on: ubuntu-latest
+    needs:
+      - node_18
+      - node_20
+    steps:
+      - name: Mostrar resumen de ejecuciones
+        run: |
+          echo "Artifact Node 18: ${{ needs.node_18.outputs['artifact-name'] }}"
+          echo "Cache Node 18: ${{ needs.node_18.outputs['cache-hit'] }}"
+          echo "Version resuelta Node 18: ${{ needs.node_18.outputs['resolved-node-version'] }}"
+          echo "Artifact Node 20: ${{ needs.node_20.outputs['artifact-name'] }}"
+          echo "Cache Node 20: ${{ needs.node_20.outputs['cache-hit'] }}"
+          echo "Version resuelta Node 20: ${{ needs.node_20.outputs['resolved-node-version'] }}"
+
+      - name: Ejecutar logica adicional del consumidor
+        run: |
+          echo "El workflow consumidor agrego una validacion posterior al pipeline reutilizable."
+          echo "Artifacts esperados: ${{ needs.node_18.outputs['artifact-name'] }} y ${{ needs.node_20.outputs['artifact-name'] }}"

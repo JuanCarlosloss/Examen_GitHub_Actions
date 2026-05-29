@@ -1,0 +1,5 @@
+/node_modules/
+/dist/
+/reports/
+/ci-logs/
+custom-actions/branch-validator/node_modules/

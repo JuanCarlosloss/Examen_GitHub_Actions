@@ -1,0 +1,19 @@
+name: Basic Push Workflow
+
+on:
+  push:
+
+jobs:
+  basic-commands:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Imprimir mensaje personalizado
+        run: echo "Se detecto un push en ${{ github.repository }}. Ejecutando comandos basicos."
+
+      - name: Listar contenido del repositorio
+        env:
+          REPO_DIR: ${{ runner.temp }}/repo
+        run: |
+          git clone --depth 1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" "$REPO_DIR"
+          echo "Contenido del repositorio:"
+          ls -la "$REPO_DIR"

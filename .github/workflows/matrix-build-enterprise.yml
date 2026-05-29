@@ -1,0 +1,116 @@
+name: Matrix Build Enterprise
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }} | Node ${{ matrix.node-version }} | ${{ matrix.mode }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node-version: ['18', '20']
+        mode: [debug, release]
+        exclude:
+          # Parte 2 — Exclusiones
+          # Evitamos debug en Windows para optimizar costos de ejecución en runners Enterprise
+          - os: windows-latest
+            mode: debug
+        include:
+          # Parte 3 — Includes
+          # Configuración especial para producción
+          - os: ubuntu-latest
+            node-version: '20'
+            mode: release
+            is-prod: true
+            env-name: Production
+            extra-flags: --optimize
+          
+          # Variable específica adicional para Windows Release
+          - os: windows-latest
+            node-version: '20'
+            mode: release
+            extra-flags: --win-dist
+            
+          # Job experimental adicional
+          - os: ubuntu-latest
+            node-version: '22'
+            mode: debug
+            experimental: true
+            env-name: Experimental
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b80ff79f17a40bab996e6812ff58acee6b7583e5 # v4.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6012912aaf22240061e886d50314a9ec6832c320 # v4.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        shell: bash
+
+      - name: Start timer
+        run: echo "START_TIME=$(date +%s)" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Run Build
+        id: build
+        run: npm run build
+        shell: bash
+
+      - name: Run Tests
+        id: test
+        run: npm run test:ci
+        shell: bash
+
+      - name: Generate Job Summary
+        if: always()
+        shell: bash
+        run: |
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+          
+          # Determinar estado de los pasos
+          if [ "${{ steps.build.outcome }}" = "success" ] && [ "${{ steps.test.outcome }}" = "success" ]; then
+            STATUS="✅ Éxito"
+            STATUS_BADGE="![Success](https://img.shields.io/badge/Status-Success-success?style=flat-square)"
+          else
+            STATUS="❌ Fallido"
+            STATUS_BADGE="![Failed](https://img.shields.io/badge/Status-Failed-critical?style=flat-square)"
+          fi
+          
+          echo "### 📊 Resumen del Job de Matriz: ${{ matrix.os }} (Node v${{ matrix.node-version }} - ${{ matrix.mode }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Métrica / Configuración | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Sistema Operativo** | \`${{ matrix.os }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Versión de Node.js** | \`v${{ matrix.node-version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Modo de Compilación** | \`${{ matrix.mode }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Entorno** | \`${{ matrix.env-name || 'Desarrollo / Pruebas' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **¿Es Producción?** | \`${{ matrix.is-prod || 'false' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **¿Es Experimental?** | \`${{ matrix.experimental || 'false' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Flags Adicionales** | \`${{ matrix.extra-flags || 'Ninguno' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Resultado del Job** | $STATUS $STATUS_BADGE |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tiempo Estimado / Duración** | \`${DURATION}s\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY

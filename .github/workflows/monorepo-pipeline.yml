@@ -1,0 +1,160 @@
+name: Monorepo Orchestrator Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'feature/**'
+    paths-ignore:
+      - 'docs/**'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect-changes:
+    name: Detección de Cambios
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      infrastructure: ${{ steps.filter.outputs.infrastructure }}
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@b80ff79f17a40bab996e6812ff58acee6b7583e5 # v4.0.0 (pinning)
+
+      - name: Filtrar rutas modificadas
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.0 (pinning)
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            backend:
+              - 'backend/**'
+            infrastructure:
+              - 'infrastructure/**'
+
+  build-frontend:
+    name: Pipeline Frontend
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    uses: ./.github/workflows/reusable-node.yml
+    with:
+      working-directory: frontend
+      node-version: "20"
+      install-command: npm ci
+      test-command: npm test
+      build-command: npm run build
+      artifact-prefix: frontend
+      artifact-retention-days: 1
+
+  build-backend:
+    name: Pipeline Backend
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    uses: ./.github/workflows/reusable-node.yml
+    with:
+      working-directory: backend
+      node-version: "20"
+      install-command: npm ci
+      test-command: npm test
+      build-command: npm run build
+      artifact-prefix: backend
+      artifact-retention-days: 1
+
+  validate-infra:
+    name: Pipeline Infraestructura
+    needs: detect-changes
+    if: needs.detect-changes.outputs.infrastructure == 'true'
+    uses: ./.github/workflows/reusable-infra.yml
+    with:
+      working-directory: infrastructure
+      terraform-version: "1.7.0"
+
+  reporting:
+    name: Generar Reporte Final
+    needs: [detect-changes, build-frontend, build-backend, validate-infra]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consolidar y publicar reporte en GitHub Summary
+        shell: bash
+        run: |
+          echo "# 📊 Resumen de Ejecución Monorepo — GlobalFin Services" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Este reporte consolida el estado del pipeline de integración del monorepo." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Componente | Carpeta | Modificado | Estado Job | Decisión de Pipeline |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- | :---: | :---: | :--- |" >> $GITHUB_STEP_SUMMARY
+
+          # Frontend
+          FE_CH="${{ needs.detect-changes.outputs.frontend }}"
+          FE_RES="${{ needs.build-frontend.result }}"
+          if [ "$FE_CH" = "true" ]; then
+            FE_MOD="✅ Sí"
+            if [ "$FE_RES" = "success" ]; then
+              FE_DEC="✅ **Ejecutado con éxito**"
+            elif [ "$FE_RES" = "failure" ]; then
+              FE_DEC="❌ **Ejecutado con fallos**"
+            else
+              FE_DEC="⚠️ **Ejecutado ($FE_RES)**"
+            fi
+          else
+            FE_MOD="❌ No"
+            FE_RES="skipped"
+            FE_DEC="⏭️ **Omitido (Sin cambios relevantes)**"
+          fi
+          echo "| **Frontend** | \`frontend/\` | $FE_MOD | \`$FE_RES\` | $FE_DEC |" >> $GITHUB_STEP_SUMMARY
+
+          # Backend
+          BE_CH="${{ needs.detect-changes.outputs.backend }}"
+          BE_RES="${{ needs.build-backend.result }}"
+          if [ "$BE_CH" = "true" ]; then
+            BE_MOD="✅ Sí"
+            if [ "$BE_RES" = "success" ]; then
+              BE_DEC="✅ **Ejecutado con éxito**"
+            elif [ "$BE_RES" = "failure" ]; then
+              BE_DEC="❌ **Ejecutado con fallos**"
+            else
+              BE_DEC="⚠️ **Ejecutado ($BE_RES)**"
+            fi
+          else
+            BE_MOD="❌ No"
+            BE_RES="skipped"
+            BE_DEC="⏭️ **Omitido (Sin cambios relevantes)**"
+          fi
+          echo "| **Backend** | \`backend/\` | $BE_MOD | \`$BE_RES\` | $BE_DEC |" >> $GITHUB_STEP_SUMMARY
+
+          # Infraestructura
+          INF_CH="${{ needs.detect-changes.outputs.infrastructure }}"
+          INF_RES="${{ needs.validate-infra.result }}"
+          if [ "$INF_CH" = "true" ]; then
+            INF_MOD="✅ Sí"
+            if [ "$INF_RES" = "success" ]; then
+              INF_DEC="✅ **Ejecutado con éxito**"
+            elif [ "$INF_RES" = "failure" ]; then
+              INF_DEC="❌ **Ejecutado con fallos**"
+            else
+              INF_DEC="⚠️ **Ejecutado ($INF_RES)**"
+            fi
+          else
+            INF_MOD="❌ No"
+            INF_RES="skipped"
+            INF_DEC="⏭️ **Omitido (Sin cambios relevantes)**"
+          fi
+          echo "| **Infraestructura** | \`infrastructure/\` | $INF_MOD | \`$INF_RES\` | $INF_DEC |" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 💡 Resumen de Optimización" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ejecución Selectiva**: Solo los componentes con cambios reales en sus respectivas carpetas han consumido recursos de runners." >> $GITHUB_STEP_SUMMARY
+          echo "- **Ignorado de Documentación**: Los cambios exclusivos en la carpeta \`docs/\` no iniciaron el workflow." >> $GITHUB_STEP_SUMMARY
+          echo "- **Caché**: Los pipelines ejecutados hicieron uso de caché nativo para evitar descargas duplicadas de Node." >> $GITHUB_STEP_SUMMARY

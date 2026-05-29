@@ -1,0 +1,50 @@
+name: Reusable Monorepo Infrastructure Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Directorio de trabajo de infraestructura (ej. infrastructure)"
+        required: true
+        type: string
+      terraform-version:
+        description: "Versión de Terraform a utilizar"
+        required: false
+        default: "1.7.0"
+        type: string
+
+permissions:
+  contents: read
+
+# YAML Anchors para compartir configuraciones comunes de pasos
+x-step-config: &step-config
+  shell: bash
+
+jobs:
+  infra_pipeline:
+    name: Validate TF [v${{ inputs.terraform-version }} - ${{ inputs.working-directory }}]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@b80ff79f17a40bab996e6812ff58acee6b7583e5 # v4.0.0
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@a9fd4c8d5d2282c09037dfc91f5068ca6cfb85c6 # v3.0.0
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: Verificar formato (terraform fmt)
+        run: terraform fmt -check
+        <<: *step-config
+        continue-on-error: true # No bloquea si no está formateado, pero avisa
+
+      - name: Inicializar configuración (terraform init)
+        run: terraform init -backend=false
+        <<: *step-config
+
+      - name: Validar configuración (terraform validate)
+        run: terraform validate
+        <<: *step-config

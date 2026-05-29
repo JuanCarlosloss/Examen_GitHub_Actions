@@ -1,0 +1,12 @@
+{
+  "name": "monorepo-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend API of the monorepo",
+  "type": "module",
+  "scripts": {
+    "lint": "echo 'Backend Lint: Running ESLint mock...' && exit 0",
+    "test": "echo 'Backend Test: Running Mocha/Jest mock...' && exit 0",
+    "build": "mkdir -p dist && echo 'console.log(\"Backend Loaded\");' > dist/index.js && echo 'Backend Build: Success!'"
+  }
+}

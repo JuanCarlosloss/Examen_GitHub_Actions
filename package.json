@@ -1,0 +1,15 @@
+{
+  "name": "github-actions-reusable-node-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Demo de workflows reutilizables para proyectos Node.js",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.js",
+    "test:ci": "node scripts/test-ci.mjs"
+  }
+}

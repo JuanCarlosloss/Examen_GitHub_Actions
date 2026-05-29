@@ -1,0 +1,119 @@
+name: Laboratorio 5 — Pipeline Híbrido
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+# Habilitar logging de depuración a nivel de workflow
+env:
+  ACTIONS_RUNNER_DEBUG: 'true'
+  ACTIONS_STEP_DEBUG: 'true'
+
+jobs:
+  build-and-test:
+    name: Build & Test (GitHub-Hosted)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Build
+        run: npm run build
+
+      - name: Run Tests
+        run: npm run test:ci
+
+      # Subir artefactos compilados y reportes para que el runner self-hosted los use
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-dist
+          path: dist/
+          retention-days: 1
+
+      - name: Upload Test Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-reports
+          path: reports/
+          retention-days: 1
+
+  deploy-local:
+    name: Local Deployment & Diagnostics (Self-Hosted)
+    needs: build-and-test
+    # Ejecutar en el runner self-hosted registrado con etiqueta personalizada
+    runs-on: [self-hosted, custom-runner-lab5]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Descargar artefactos generados en el runner hosted
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: app-dist
+          path: dist/
+
+      - name: Download Test Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: app-reports
+          path: reports/
+
+      - name: System Diagnostics (Self-Hosted Host)
+        run: |
+          echo "=== DIAGNÓSTICOS DEL SISTEMA ANFITRIÓN ==="
+          echo "Usuario actual: $(whoami)"
+          echo "Arquitectura: $(uname -m)"
+          echo "Kernel: $(uname -r)"
+          echo "Uso de Disco:"
+          df -h .
+          echo "Memoria RAM:"
+          free -h || echo "No disponible"
+          echo "Versión de Node.js instalada en el host:"
+          node --version || echo "Node.js no está instalado en el PATH del runner"
+
+      - name: Verify Artifact Integrity
+        run: |
+          echo "=== VERIFICACIÓN DE ARTEFACTOS ==="
+          if [ -d "dist" ]; then
+            echo "✅ Carpeta 'dist' encontrada."
+            ls -la dist/
+          else
+            echo "❌ Error: Carpeta 'dist' no encontrada."
+            exit 1
+          fi
+          
+          if [ -f "reports/test-report.tap" ]; then
+            echo "✅ Reporte de tests encontrado."
+            cat reports/test-report.tap
+          else
+            echo "❌ Error: Reporte de tests no encontrado."
+            exit 1
+          fi
+
+      - name: Simulate Local Deployment
+        run: |
+          echo "=== SIMULACIÓN DE DESPLIEGUE LOCAL ==="
+          DEPLOY_DIR="${{ runner.temp }}/local-deploy-target"
+          mkdir -p "$DEPLOY_DIR"
+          cp -r dist/* "$DEPLOY_DIR/"
+          echo "✅ Archivos de la aplicación copiados con éxito a la ruta de despliegue local: $DEPLOY_DIR"
+          echo "Contenido en la ruta de despliegue:"
+          ls -la "$DEPLOY_DIR"
+          
+          echo "🎉 Despliegue híbrido local completado exitosamente!"

@@ -1,0 +1,31 @@
+name: 'Git Branch Naming Validator'
+description: 'Valida de forma robusta la nomenclatura de ramas en base a prefijos y longitud requerida'
+branding:
+  icon: 'git-branch'
+  color: 'purple'
+
+inputs:
+  branch-name:
+    description: 'Nombre de la rama a validar'
+    required: false
+    default: '${{ github.head_ref || github.ref_name }}'
+  allowed-prefixes:
+    description: 'Lista de prefijos válidos separados por comas'
+    required: false
+    default: 'feature,bugfix,hotfix,release,chore'
+  min-length:
+    description: 'Longitud mínima requerida del nombre de la rama (excluyendo el prefijo)'
+    required: false
+    default: '5'
+
+outputs:
+  is-valid:
+    description: 'Resultado de la validación: "true" o "false"'
+  branch-type:
+    description: 'El prefijo/tipo extraído de la rama (ej: feature, bugfix)'
+  branch-reason:
+    description: 'Explicación textual del resultado de la validación'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

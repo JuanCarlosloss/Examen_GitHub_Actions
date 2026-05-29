@@ -1,0 +1,12 @@
+{
+  "name": "monorepo-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend application of the monorepo",
+  "type": "module",
+  "scripts": {
+    "lint": "echo 'Frontend Lint: Running ESLint mock...' && exit 0",
+    "test": "echo 'Frontend Test: Running Mocha/Jest mock...' && exit 0",
+    "build": "mkdir -p dist && echo '<h1>Monorepo Frontend</h1>' > dist/index.html && echo 'Frontend Build: Success!'"
+  }
+}

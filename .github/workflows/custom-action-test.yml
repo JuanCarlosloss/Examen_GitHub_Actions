@@ -1,0 +1,93 @@
+name: Test Custom Branch Validator
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-custom-action:
+    name: Test Custom Action Scenarios
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Caso 1: Rama Válida (Convención Correcta)
+      - name: Scenario 1 - Valid Branch Name
+        id: validate_valid
+        uses: ./custom-actions/branch-validator
+        with:
+          branch-name: 'feature/user-authentication-oauth'
+          allowed-prefixes: 'feature,bugfix,hotfix,release,chore'
+          min-length: '6'
+
+      - name: Check Scenario 1 Outputs
+        run: |
+          echo "Is Valid: ${{ steps.validate_valid.outputs.is-valid }}"
+          echo "Branch Type: ${{ steps.validate_valid.outputs.branch-type }}"
+          echo "Reason: ${{ steps.validate_valid.outputs.branch-reason }}"
+          if [ "${{ steps.validate_valid.outputs.is-valid }}" != "true" ]; then
+            echo "❌ Error: Se esperaba que la rama fuera válida."
+            exit 1
+          fi
+
+      # Caso 2: Rama Inválida (Nomenclatura incorrecta - Sin prefijo válido)
+      - name: Scenario 2 - Invalid Branch Name (Prefix)
+        id: validate_invalid_prefix
+        uses: ./custom-actions/branch-validator
+        with:
+          branch-name: 'refactor/optimize-database-queries'
+          allowed-prefixes: 'feature,bugfix,hotfix,release,chore'
+          min-length: '5'
+
+      - name: Check Scenario 2 Outputs
+        run: |
+          echo "Is Valid: ${{ steps.validate_invalid_prefix.outputs.is-valid }}"
+          echo "Branch Type: ${{ steps.validate_invalid_prefix.outputs.branch-type }}"
+          echo "Reason: ${{ steps.validate_invalid_prefix.outputs.branch-reason }}"
+          if [ "${{ steps.validate_invalid_prefix.outputs.is-valid }}" == "true" ]; then
+            echo "❌ Error: Se esperaba que la rama no fuera válida."
+            exit 1
+          fi
+
+      # Caso 3: Rama Inválida (Sufijo demasiado corto)
+      - name: Scenario 3 - Suffix Too Short
+        id: validate_short_suffix
+        uses: ./custom-actions/branch-validator
+        with:
+          branch-name: 'bugfix/fix'
+          allowed-prefixes: 'feature,bugfix,hotfix,release,chore'
+          min-length: '5'
+
+      - name: Check Scenario 3 Outputs
+        run: |
+          echo "Is Valid: ${{ steps.validate_short_suffix.outputs.is-valid }}"
+          echo "Branch Type: ${{ steps.validate_short_suffix.outputs.branch-type }}"
+          echo "Reason: ${{ steps.validate_short_suffix.outputs.branch-reason }}"
+          if [ "${{ steps.validate_short_suffix.outputs.is-valid }}" == "true" ]; then
+            echo "❌ Error: Se esperaba que el sufijo fuera demasiado corto."
+            exit 1
+          fi
+
+      # Caso 4: Robustez ante entrada vacía (Debe provocar setFailed controlado)
+      - name: Scenario 4 - Robustness Check (Empty Input)
+        id: validate_empty
+        uses: ./custom-actions/branch-validator
+        continue-on-error: true
+        with:
+          branch-name: '   '
+          allowed-prefixes: 'feature,bugfix,hotfix,release'
+
+      - name: Check Scenario 4 Failure
+        run: |
+          echo "Is Valid: ${{ steps.validate_empty.outputs.is-valid }}"
+          echo "Branch Type: ${{ steps.validate_empty.outputs.branch-type }}"
+          echo "Reason: ${{ steps.validate_empty.outputs.branch-reason }}"
+          echo "El paso anterior debió haber fallado con continue-on-error activado."
